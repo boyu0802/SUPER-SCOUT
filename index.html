@@ -63,58 +63,86 @@
   <div id="status-list"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-  <script>
-    const API_URL = 'YOUR_GOOGLE_SCRIPT_URL'; // placeholder
-    const API_TOKEN = 'YOUR_API_TOKEN'; // placeholder
+<script>
+  const API_URL = 'https://script.google.com/macros/s/AKfycbz1Ir4PUm8xBI9UKyxm9aqZdnlgf8WrSvqhhBs0GMdT2MANHXUmdinsuqXlKAkM2SXv-Q/exec';  // from Apps Script deployment
 
-    function ratingOptions() { return Array.from({length: 5}, (_, i) => `<option value="${i+1}">${i+1}</option>`).join(''); }
+  function ratingOptions() {
+    return Array.from({length: 5}, (_, i) => `<option value="${i+1}">${i+1}</option>`).join('');
+  }
 
-    function createRobotCard(robotId) {
-      const c = document.createElement('div');
-      c.className = 'robot-card';
-      c.innerHTML = `
-        <h2>${robotId}</h2>
-        <label>Team Number:</label><input type="number" id="${robotId}_team" min="0" placeholder="Team #">
-        <label>Driver Skill (1-5):</label><select id="${robotId}_driver">${ratingOptions()}</select>
-        <label>Speed (1-5):</label><select id="${robotId}_speed">${ratingOptions()}</select>
-        <label>Defense (1-5):</label><select id="${robotId}_defense">${ratingOptions()}</select>
-        <label>Comments:</label><textarea id="${robotId}_comments" placeholder="Enter comments..."></textarea>`;
-      return c;
-    }
+  function createRobotCard(robotId) {
+    const c = document.createElement('div');
+    c.className = 'robot-card';
+    c.innerHTML = `
+      <h2>${robotId}</h2>
+      <label>Team Number:</label><input type="number" id="${robotId}_team" min="0" placeholder="Team #">
+      <label>Driver Skill (1-5):</label><select id="${robotId}_driver">${ratingOptions()}</select>
+      <label>Speed (1-5):</label><select id="${robotId}_speed">${ratingOptions()}</select>
+      <label>Defense (1-5):</label><select id="${robotId}_defense">${ratingOptions()}</select>
+      <label>Comments:</label><textarea id="${robotId}_comments" placeholder="Enter comments..."></textarea>`;
+    return c;
+  }
 
-    function collectAllRobots() {
-      const scoutName = document.getElementById('scout_name').value || '';
-      const alliances = [
-        { name: 'Red', prefix: 'R', success: document.getElementById('red_success').value, fail: document.getElementById('red_fail').value },
-        { name: 'Blue', prefix: 'B', success: document.getElementById('blue_success').value, fail: document.getElementById('blue_fail').value }
-      ];
-      let robots = [];
-      alliances.forEach(a => {
-        for (let i=1; i<=3; i++) {
-          robots.push({
-            scoutName,
-            alliance: a.name,
-            allianceSuccess: a.success,
-            allianceFail: a.fail,
-            robot: `${a.prefix}${i}`,
-            teamNumber: document.getElementById(`${a.prefix}${i}_team`).value,
-            driver: document.getElementById(`${a.prefix}${i}_driver`).value,
-            speed: document.getElementById(`${a.prefix}${i}_speed`).value,
-            defense: document.getElementById(`${a.prefix}${i}_defense`).value,
-            comments: document.getElementById(`${a.prefix}${i}_comments`).value
-          });
-        }
-      });
-      return robots;
-    }
+  function collectAllRobotsTSV() {
+    const scoutName = document.getElementById('scout_name').value || '';
+    const alliances = [
+      { name: 'Red', prefix: 'R', success: document.getElementById('red_success').value, fail: document.getElementById('red_fail').value },
+      { name: 'Blue', prefix: 'B', success: document.getElementById('blue_success').value, fail: document.getElementById('blue_fail').value }
+    ];
 
-
-    document.addEventListener('DOMContentLoaded', () => {
-      ['R1','R2','R3'].forEach(r => document.getElementById('red-row').appendChild(createRobotCard(r)));
-      ['B1','B2','B3'].forEach(r => document.getElementById('blue-row').appendChild(createRobotCard(r)));
-      document.getElementById('submit-btn').addEventListener('click', submitToGoogleSheet);
-      document.getElementById('generate-btn').addEventListener('click', openQRCodePage);
+    let lines = [];
+    alliances.forEach(a => {
+      for (let i=1; i<=3; i++) {
+        let row = [
+          new Date().toISOString(), // timestamp
+          scoutName,
+          a.name,
+          a.success,
+          a.fail,
+          `${a.prefix}${i}`,
+          document.getElementById(`${a.prefix}${i}_team`).value,
+          document.getElementById(`${a.prefix}${i}_driver`).value,
+          document.getElementById(`${a.prefix}${i}_speed`).value,
+          document.getElementById(`${a.prefix}${i}_defense`).value,
+          document.getElementById(`${a.prefix}${i}_comments`).value.replace(/\t/g, " ")
+        ];
+        lines.push(row.join("\t"));
+      }
     });
-  </script>
+    return lines.join("\n");
+  }
+
+  async function submitToGoogleSheet() {
+    const tsvData = collectAllRobotsTSV();
+    try {
+      const res = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data: tsvData })
+      });
+      const text = await res.text();
+      document.getElementById('status-list').innerHTML = `<p style="color:green;">Submitted: ${text}</p>`;
+    } catch (err) {
+      document.getElementById('status-list').innerHTML = `<p style="color:red;">Error: ${err}</p>`;
+    }
+  }
+
+  function openQRCodePage() {
+    const tsvData = collectAllRobotsTSV();
+    document.getElementById('status-list').innerHTML = '<div id="qrcode"></div>';
+    new QRCode(document.getElementById("qrcode"), {
+      text: tsvData,
+      width: 256,
+      height: 256
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    ['R1','R2','R3'].forEach(r => document.getElementById('red-row').appendChild(createRobotCard(r)));
+    ['B1','B2','B3'].forEach(r => document.getElementById('blue-row').appendChild(createRobotCard(r)));
+    document.getElementById('submit-btn').addEventListener('click', submitToGoogleSheet);
+    document.getElementById('generate-btn').addEventListener('click', openQRCodePage);
+  });
+</script>
 </body>
 </html>
